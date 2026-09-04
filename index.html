@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vásárhelyi Áron — Apps</title>
+  <style>
+    @font-face {
+      font-family: "Google Sans Flex Local";
+      src: url("fonts/GoogleSansFlex_24pt-Regular.ttf") format("truetype");
+      font-weight: 600;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      --bg: #ffffff;
+      --fg: #0a0a0a;
+      --line: #111111;
+      --page-pad: clamp(10px, 1.1vw, 22px);
+      --header-size: clamp(13px, 1.25vw, 18px);
+      --app-size: clamp(44px, 7.4vw, 128px);
+      --row-height: 0.72em;
+
+      /* A betu alaphelyzetben ennyire log a vagas ala. */
+      --title-drop: 0.23em;
+
+      /* Hoverkor a felirat ES a lap felso ele ugyanennyit emelkedik. */
+      --lift: 0.23em;
+
+      --title-overflow-top: 0.34em;
+      --preview-w: clamp(220px, 24vw, 390px);
+      --speed: 160ms;
+      --top-space: clamp(28px, 5vh, 64px);
+      --footer-height: clamp(120px, 18vh, 210px);
+      --footer-space: clamp(32px, 5vh, 70px);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+    }
+
+    body {
+      font-family: "Google Sans Flex Local", Arial, Helvetica, sans-serif;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* A logó piros vonalai az egész böngészőablakban futnak.
+       A canvas a fehér takarólapok FÖLÖTT van, így azok nem tüntetik el.
+       A multiply keverés miatt a fekete tipográfia és a választóvonalak
+       vizuálisan továbbra is a piros animáció előtt maradnak. */
+    .physics-background {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 900;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+    }
+
+    main {
+      position: relative;
+      z-index: 2;
+      padding-top: var(--top-space);
+      padding-bottom: calc(var(--footer-height) + var(--footer-space));
+      min-height: 100vh;
+    }
+
+    .site-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1000;
+      isolation: isolate;
+      min-height: var(--footer-height);
+      padding: var(--page-pad);
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      background: transparent;
+    }
+
+    .site-footer::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(-1 * var(--footer-space));
+      height: var(--footer-space);
+      background: transparent;
+      pointer-events: none;
+    }
+
+
+    .footer-label,
+    .footer-right {
+      position: relative;
+      z-index: 1;
+    }
+
+    .footer-label {
+      margin: 0;
+      font-size: var(--app-size);
+      font-weight: 600;
+      line-height: 0.84;
+      letter-spacing: -0.055em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .site-name,
+    .portfolio-link {
+      font-size: var(--header-size);
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      text-transform: uppercase;
+    }
+
+    .footer-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      text-align: right;
+      padding-bottom: 0.06em;
+    }
+
+    .site-name {
+      margin: 0;
+    }
+
+    .portfolio-link {
+      color: var(--fg);
+      text-decoration: none;
+      transition: color 140ms ease-out;
+    }
+
+    .portfolio-link:hover,
+    .portfolio-link:focus-visible {
+      color: #8a8a8a;
+    }
+
+    .portfolio-link:focus-visible {
+      outline: 1px solid currentColor;
+      outline-offset: 3px;
+    }
+
+    .app-list {
+      position: relative;
+      width: 100%;
+      isolation: isolate;
+    }
+
+    /*
+      A .app-row csak a kattinthato helyet es a reteg sorrendjet adja.
+      A takaras NEM a bongeszo font-metrikajara van bizva: minden cim egy
+      fix, overflow:hidden ablakban van, ezert a vonal ala eso resz biztosan eltunik.
+    */
+    .app-row {
+      position: relative;
+      display: block;
+      height: var(--row-height);
+      font-size: var(--app-size);
+      line-height: 1;
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      outline: none;
+      overflow: visible;
+      isolation: isolate;
+    }
+
+    /*
+      Ez maga a feher "lap". A felso szelen van a vonal, alatta pedig
+      egy hosszu, tenyleges feher takarofelulet. Kesobbi sorok magasabb
+      z-indexen vannak, igy valoban letakarjak az elozo sor tulnyulo betuit.
+    */
+    .app-sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: calc(100vh + var(--row-height) + 4px);
+      background: var(--bg);
+      border-top: 1px solid var(--line);
+      z-index: 1;
+      pointer-events: none;
+      transform: translateY(0);
+      transition: transform var(--speed) ease-out;
+      will-change: transform;
+    }
+
+    /*
+      Ez a fix vagas. Alaphelyzetben a felirat also resze tenylegesen
+      nincs kirajzolva a sor also hatara alatt, fuggetlenul attol,
+      hogy file://-bol, GitHubrol vagy elonezetben fut az oldal.
+    */
+    .app-title-clip {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(-1 * var(--title-overflow-top));
+      bottom: 0;
+      overflow: hidden;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .app-title {
+      position: absolute;
+      left: var(--page-pad);
+      bottom: calc(-1 * var(--title-drop));
+      display: block;
+      white-space: nowrap;
+      font-size: 1em;
+      font-weight: 600;
+      letter-spacing: -0.055em;
+      line-height: 0.84;
+      transform: translateY(0);
+      transition: transform var(--speed) ease-out;
+      will-change: transform;
+    }
+
+    /*
+      Hoverkor ket kulon dolog tortenik egyszerre:
+      1. a cim felfele megy a FIX also vagas mogul -> latszik a teljes alja;
+      2. a feher lap + a felso vonala is felfele megy -> jobban kitakarja
+         a folotte levo sor betuit.
+    */
+    .app-row:hover .app-title,
+    .app-row:focus-visible .app-title {
+      transform: translateY(calc(-1 * var(--lift)));
+    }
+
+    .app-row:hover .app-sheet,
+    .app-row:focus-visible .app-sheet {
+      transform: translateY(calc(-1 * var(--lift)));
+    }
+
+    .app-row:focus-visible {
+      outline: 1px solid var(--fg);
+      outline-offset: -1px;
+    }
+
+    /* Az utolso felirat alatt is ugyanaz a fizikai feher lap zarja a listat. */
+    .end-sheet {
+      position: relative;
+      height: 1px;
+      background: var(--bg);
+      border-top: 1px solid var(--line);
+    }
+
+    .end-sheet::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 100vh;
+      background: var(--bg);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .preview {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 10000;
+      width: var(--preview-w);
+      aspect-ratio: 16 / 10;
+      display: none;
+      pointer-events: none;
+      background: #f3f3f3;
+      overflow: hidden;
+      border: 0px solid var(--line);
+    }
+
+    .preview.is-visible { display: block; }
+
+    .preview img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .preview-fallback {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+      font-size: 14px;
+      line-height: 1.2;
+      text-transform: uppercase;
+      background: #f3f3f3;
+    }
+
+    .preview.no-image .preview-fallback { display: flex; }
+    .preview.no-image img { display: none; }
+
+    @media (max-width: 720px) {
+      :root {
+        --app-size: clamp(38px, 12vw, 72px);
+        --preview-w: min(62vw, 300px);
+      }
+
+      :root {
+        --footer-height: 130px;
+        --top-space: 28px;
+        --footer-space: 28px;
+      }
+
+      .site-footer {
+        align-items: flex-end;
+      }
+    }
+
+    @media (pointer: coarse) {
+      .preview { display: none !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .app-title,
+      .app-sheet { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="physicsBackground" class="physics-background" aria-hidden="true"></canvas>
+
+  <main>
+    <nav class="app-list" id="appList" aria-label="Alkalmazások"></nav>
+  </main>
+
+  <footer class="site-footer">
+    <p class="footer-label">Apps</p>
+
+    <div class="footer-right">
+      <h1 class="site-name">Vásárhelyi Áron</h1>
+      <!-- A portfolio linkjet itt tudod majd kicserelni. -->
+      <a class="portfolio-link" href="https://theaaon.github.io/portfolio/index.html">Portfolio</a>
+    </div>
+  </footer>
+
+  <div class="preview" id="preview" aria-hidden="true">
+    <img id="previewImage" alt="" />
+    <div class="preview-fallback" id="previewFallback">Preview</div>
+  </div>
+
+  <script>
+    /*
+      Ezt a listat kell majd atirnod.
+      name: az app neve
+      url: a GitHub Pages / weboldal cime
+      preview: a PNG elonezet helye
+    */
+    const apps = [
+      {
+        name: "HUN TYPE",
+        url: "https://theaaon.github.io/HUNType/",
+        preview: "image/21.png"
+      },
+      {
+        name: "PRE'ON",
+        url: "w",
+        preview: "image/soon2.png"
+      },
+      {
+        name: "FLOORPLANER",
+        url: "w",
+        preview: "image/soon2.png"
+      }
+    ];
+
+    const list = document.getElementById("appList");
+    const preview = document.getElementById("preview");
+    const previewImage = document.getElementById("previewImage");
+    const previewFallback = document.getElementById("previewFallback");
+
+    apps.forEach((app, index) => {
+      const link = document.createElement("a");
+      link.className = "app-row";
+      link.href = app.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.dataset.preview = app.preview;
+      link.dataset.name = app.name;
+
+      /* Minden kovetkezo lap az elozo folott van. */
+      link.style.zIndex = String(index + 1);
+
+      link.innerHTML = `
+        <span class="app-sheet" aria-hidden="true"></span>
+        <span class="app-title-clip">
+          <span class="app-title">${app.name}</span>
+        </span>
+      `;
+
+      list.appendChild(link);
+    });
+
+    const endSheet = document.createElement("div");
+    endSheet.className = "end-sheet";
+    endSheet.style.zIndex = String(apps.length + 2);
+    list.appendChild(endSheet);
+
+    let currentRow = null;
+    let pointerX = 0;
+    let pointerY = 0;
+    let frame = null;
+
+    function showPreview(row) {
+      currentRow = row;
+      previewFallback.textContent = row.dataset.name;
+      preview.classList.remove("no-image");
+      previewImage.src = row.dataset.preview;
+      preview.classList.add("is-visible");
+      positionPreview();
+    }
+
+    function hidePreview() {
+      currentRow = null;
+      preview.classList.remove("is-visible");
+      previewImage.removeAttribute("src");
+    }
+
+    function positionPreview() {
+      frame = null;
+      if (!currentRow) return;
+
+      const gap = 18;
+      const rect = preview.getBoundingClientRect();
+      let x = pointerX + gap;
+      let y = pointerY + gap;
+
+      if (x + rect.width > window.innerWidth - 10) {
+        x = pointerX - rect.width - gap;
+      }
+
+      if (y + rect.height > window.innerHeight - 10) {
+        y = pointerY - rect.height - gap;
+      }
+
+      x = Math.max(10, x);
+      y = Math.max(10, y);
+      preview.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    }
+
+    list.addEventListener("pointerover", (event) => {
+      const row = event.target.closest(".app-row");
+      if (!row || row === currentRow) return;
+      showPreview(row);
+    });
+
+    list.addEventListener("pointerout", (event) => {
+      const row = event.target.closest(".app-row");
+      if (!row) return;
+      if (event.relatedTarget && row.contains(event.relatedTarget)) return;
+      hidePreview();
+    });
+
+    list.addEventListener("pointermove", (event) => {
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      if (!frame) frame = requestAnimationFrame(positionPreview);
+    });
+
+    previewImage.addEventListener("load", () => {
+      preview.classList.remove("no-image");
+    });
+
+    previewImage.addEventListener("error", () => {
+      preview.classList.add("no-image");
+    });
+  </script>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('physicsBackground');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const RED = '#ed1b24';
+
+  let width = 1;
+  let height = 1;
+  let dpr = 1;
+  let lastNow = performance.now();
+  let simTime = 0;
+  let accumulator = 0;
+  const FIXED_DT = 1 / 120;
+  const encounters = new Map();
+
+  const settings = {
+    speed: 0.78,
+    airDrag: 0.12,
+    restitutionWall: 0.82,
+    restitutionPiece: 0.86,
+    collisionChance: 0.18
+  };
+
+  // A feltöltött logó animációjának hat piros vonala, a kör nélkül.
+  const initialPieces = [
+    { x: 255, y: 444, len: 718, angle: 107.6, phase: 0.3 },
+    { x: 565, y: 444, len: 718, angle: 107.6, phase: 1.0 },
+    { x: 560, y: 450, len: 733, angle: 72.7,  phase: 1.7 },
+    { x: 466, y: 598, len: 725, angle: 72.8,  phase: 3.2 },
+    { x: 784, y: 367, len: 304, angle: 0.0,   phase: 4.5 },
+    { x: 744, y: 517, len: 121, angle: 126.0, phase: 5.8 }
+  ];
+
+  let pieces = [];
+  let pointer = { lastX: 0, lastY: 0, lastT: 0, active: false };
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function dot(a, b) { return a.x * b.x + a.y * b.y; }
+  function cross(a, b) { return a.x * b.y - a.y * b.x; }
+  function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+  function add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
+  function mul(a, s) { return { x: a.x * s, y: a.y * s }; }
+  function length(v) { return Math.hypot(v.x, v.y); }
+  function normalize(v, fallback = { x: 1, y: 0 }) {
+    const l = length(v);
+    return l > 1e-8 ? { x: v.x / l, y: v.y / l } : fallback;
+  }
+
+  function endpoints(b) {
+    const hx = Math.cos(b.angle) * b.len * 0.5;
+    const hy = Math.sin(b.angle) * b.len * 0.5;
+    return [
+      { x: b.x - hx, y: b.y - hy },
+      { x: b.x + hx, y: b.y + hy }
+    ];
+  }
+
+  function pointVelocity(b, r) {
+    return { x: b.vx - b.omega * r.y, y: b.vy + b.omega * r.x };
+  }
+
+  function applyImpulse(b, impulse, r) {
+    b.vx += impulse.x * b.invMass;
+    b.vy += impulse.y * b.invMass;
+    b.omega += cross(r, impulse) * b.invI;
+  }
+
+  function closestSegmentPoints(p1, q1, p2, q2) {
+    const d1 = sub(q1, p1);
+    const d2 = sub(q2, p2);
+    const r = sub(p1, p2);
+    const a = dot(d1, d1);
+    const e = dot(d2, d2);
+    const f = dot(d2, r);
+    let s, t;
+    const EPS = 1e-9;
+
+    if (a <= EPS && e <= EPS) return { c1: p1, c2: p2 };
+    if (a <= EPS) {
+      s = 0;
+      t = clamp(f / e, 0, 1);
+    } else {
+      const c = dot(d1, r);
+      if (e <= EPS) {
+        t = 0;
+        s = clamp(-c / a, 0, 1);
+      } else {
+        const b = dot(d1, d2);
+        const denom = a * e - b * b;
+        s = denom !== 0 ? clamp((b * f - c * e) / denom, 0, 1) : 0;
+        t = (b * s + f) / e;
+        if (t < 0) {
+          t = 0;
+          s = clamp(-c / a, 0, 1);
+        } else if (t > 1) {
+          t = 1;
+          s = clamp((b - c) / a, 0, 1);
+        }
+      }
+    }
+    return { c1: add(p1, mul(d1, s)), c2: add(p2, mul(d2, t)) };
+  }
+
+  function pairKey(a, b) {
+    return a.id < b.id ? a.id + ':' + b.id : b.id + ':' + a.id;
+  }
+
+  function buildPieces(keepMotion = false) {
+    const old = pieces;
+    const scale = Math.max(0.44, Math.min(width, height) / 1000);
+    const sceneSize = 1000 * scale;
+    const offsetX = (width - sceneSize) * 0.5;
+    const offsetY = (height - sceneSize) * 0.5;
+    const barWidth = clamp(23 * scale, 12, 28);
+
+    pieces = initialPieces.map((p, i) => {
+      const pieceLen = p.len * scale;
+      const mass = 0.75 + pieceLen / Math.max(260 * scale, 1);
+      const inertia = mass * (pieceLen * pieceLen + barWidth * barWidth) / 12;
+      const previous = keepMotion && old[i] ? old[i] : null;
+      return {
+        id: i,
+        x: previous ? clamp(previous.x, 0, width) : offsetX + p.x * scale,
+        y: previous ? clamp(previous.y, 0, height) : offsetY + p.y * scale,
+        len: pieceLen,
+        width: barWidth,
+        angle: previous ? previous.angle : p.angle * Math.PI / 180,
+        vx: previous ? previous.vx : (Math.random() - 0.5) * 34,
+        vy: previous ? previous.vy : (Math.random() - 0.5) * 28,
+        omega: previous ? previous.omega : (Math.random() - 0.5) * 0.28,
+        mass,
+        invMass: 1 / mass,
+        inertia,
+        invI: 1 / inertia,
+        phase: p.phase
+      };
+    });
+    encounters.clear();
+  }
+
+  function resolveWallCollision(b) {
+    const c = Math.cos(b.angle);
+    const s = Math.sin(b.angle);
+    const halfX = Math.abs(c) * b.len * 0.5 + Math.abs(s) * b.width * 0.5;
+    const halfY = Math.abs(s) * b.len * 0.5 + Math.abs(c) * b.width * 0.5;
+    let hitX = 0;
+    let hitY = 0;
+
+    if (b.x - halfX < 0) {
+      b.x = halfX;
+      if (b.vx < 0) { b.vx = -b.vx * settings.restitutionWall; hitX = 1; }
+    } else if (b.x + halfX > width) {
+      b.x = width - halfX;
+      if (b.vx > 0) { b.vx = -b.vx * settings.restitutionWall; hitX = -1; }
+    }
+
+    if (b.y - halfY < 0) {
+      b.y = halfY;
+      if (b.vy < 0) { b.vy = -b.vy * settings.restitutionWall; hitY = 1; }
+    } else if (b.y + halfY > height) {
+      b.y = height - halfY;
+      if (b.vy > 0) { b.vy = -b.vy * settings.restitutionWall; hitY = -1; }
+    }
+
+    if (hitX || hitY) {
+      b.omega += (hitX * b.vy - hitY * b.vx) * 0.0007;
+      b.omega = clamp(b.omega, -0.72, 0.72);
+    }
+  }
+
+  function solvePieceCollisions() {
+    const overlappingNow = new Set();
+    for (let i = 0; i < pieces.length; i++) {
+      for (let j = i + 1; j < pieces.length; j++) {
+        const a = pieces[i];
+        const b = pieces[j];
+        const [a1, a2] = endpoints(a);
+        const [b1, b2] = endpoints(b);
+        const cp = closestSegmentPoints(a1, a2, b1, b2);
+        const delta = sub(cp.c2, cp.c1);
+        const dist = length(delta);
+        const minDist = (a.width + b.width) * 0.5;
+        const key = pairKey(a, b);
+        if (dist >= minDist) continue;
+        overlappingNow.add(key);
+
+        if (!encounters.has(key)) {
+          encounters.set(key, { solid: Math.random() < settings.collisionChance });
+        }
+        if (!encounters.get(key).solid) continue;
+
+        const n = dist > 1e-6
+          ? { x: delta.x / dist, y: delta.y / dist }
+          : normalize({ x: b.x - a.x, y: b.y - a.y });
+        const penetration = minDist - dist;
+        const invMassSum = a.invMass + b.invMass;
+        const correction = Math.max(penetration - 0.2, 0) / Math.max(invMassSum, 1e-8) * 0.68;
+
+        a.x -= n.x * correction * a.invMass;
+        a.y -= n.y * correction * a.invMass;
+        b.x += n.x * correction * b.invMass;
+        b.y += n.y * correction * b.invMass;
+
+        const contact = { x: (cp.c1.x + cp.c2.x) * 0.5, y: (cp.c1.y + cp.c2.y) * 0.5 };
+        const ra = { x: contact.x - a.x, y: contact.y - a.y };
+        const rb = { x: contact.x - b.x, y: contact.y - b.y };
+        const rv = sub(pointVelocity(b, rb), pointVelocity(a, ra));
+        const velAlongNormal = dot(rv, n);
+
+        if (velAlongNormal < 0) {
+          const raN = cross(ra, n);
+          const rbN = cross(rb, n);
+          const denom = a.invMass + b.invMass + raN * raN * a.invI + rbN * rbN * b.invI;
+          const jn = -(1 + settings.restitutionPiece) * velAlongNormal / Math.max(denom, 1e-8);
+          const impulse = mul(n, jn);
+          applyImpulse(a, mul(impulse, -1), ra);
+          applyImpulse(b, impulse, rb);
+        }
+      }
+    }
+
+    for (const key of encounters.keys()) {
+      if (!overlappingNow.has(key)) encounters.delete(key);
+    }
+  }
+
+  function step(dt) {
+    simTime += dt;
+    for (const b of pieces) {
+      const flowX = Math.sin(simTime * 0.47 + b.phase) * 8.5;
+      const flowY = Math.cos(simTime * 0.39 + b.phase * 1.31) * 7.0;
+      const torque = Math.sin(simTime * 0.34 + b.phase * 0.83) * 0.052;
+
+      b.vx += flowX * dt;
+      b.vy += flowY * dt;
+      b.omega += torque * dt;
+
+      const drag = Math.exp(-settings.airDrag * dt);
+      b.vx *= drag;
+      b.vy *= drag;
+      b.omega *= Math.exp(-0.065 * dt);
+
+      const maxV = Math.max(90, Math.min(width, height) * 0.19);
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp > maxV) {
+        b.vx *= maxV / sp;
+        b.vy *= maxV / sp;
+      }
+      b.omega = clamp(b.omega, -0.72, 0.72);
+
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.angle += b.omega * dt;
+      resolveWallCollision(b);
+    }
+
+    solvePieceCollisions();
+    for (const b of pieces) resolveWallCollision(b);
+  }
+
+  function drawCapsule(b) {
+    const half = b.len * 0.5;
+    const c = Math.cos(b.angle);
+    const s = Math.sin(b.angle);
+    ctx.beginPath();
+    ctx.moveTo(b.x - c * half, b.y - s * half);
+    ctx.lineTo(b.x + c * half, b.y + s * half);
+    ctx.strokeStyle = RED;
+    ctx.lineWidth = b.width;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+  }
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    for (const b of pieces) drawCapsule(b);
+  }
+
+  function resizeCanvas() {
+    const oldW = width;
+    const oldH = height;
+    width = Math.max(1, window.innerWidth);
+    height = Math.max(1, window.innerHeight);
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    if (!pieces.length) {
+      buildPieces(false);
+    } else {
+      const sx = width / Math.max(oldW, 1);
+      const sy = height / Math.max(oldH, 1);
+      for (const b of pieces) {
+        b.x *= sx;
+        b.y *= sy;
+      }
+      buildPieces(true);
+    }
+  }
+
+  function frame(now) {
+    const realDt = Math.min((now - lastNow) / 1000, 0.05);
+    lastNow = now;
+    accumulator += realDt * settings.speed;
+    let guard = 0;
+    while (accumulator >= FIXED_DT && guard < 12) {
+      step(FIXED_DT);
+      accumulator -= FIXED_DT;
+      guard++;
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function pushFromPointer(e) {
+    const now = performance.now();
+    const x = e.clientX;
+    const y = e.clientY;
+
+    if (!pointer.active) {
+      pointer = { lastX: x, lastY: y, lastT: now, active: true };
+      return;
+    }
+
+    const dt = Math.max((now - pointer.lastT) / 1000, 0.008);
+    const vx = clamp((x - pointer.lastX) / dt, -1800, 1800);
+    const vy = clamp((y - pointer.lastY) / dt, -1800, 1800);
+    const radius = Math.max(190, Math.min(width, height) * 0.30);
+
+    for (const b of pieces) {
+      const dx = b.x - x;
+      const dy = b.y - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > radius) continue;
+
+      const influence = 1 - dist / radius;
+      const smooth = influence * influence * (3 - 2 * influence);
+      const moveStrength = 0.026 * smooth;
+      b.vx += vx * moveStrength;
+      b.vy += vy * moveStrength;
+
+      if (dist > 1) {
+        const repel = 24 * smooth;
+        b.vx += dx / dist * repel;
+        b.vy += dy / dist * repel;
+      }
+
+      b.omega += ((-dy * vx + dx * vy) / Math.max(radius * radius, 1)) * 0.0045 * smooth;
+    }
+
+    pointer.lastX = x;
+    pointer.lastY = y;
+    pointer.lastT = now;
+  }
+
+  window.addEventListener('pointermove', pushFromPointer, { passive: true });
+  window.addEventListener('pointerleave', () => { pointer.active = false; }, { passive: true });
+  window.addEventListener('blur', () => { pointer.active = false; });
+  window.addEventListener('resize', resizeCanvas, { passive: true });
+
+  resizeCanvas();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
