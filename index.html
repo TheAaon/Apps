@@ -339,30 +339,86 @@
     .preview.no-image .preview-fallback { display: flex; }
     .preview.no-image img { display: none; }
 
-    @media (max-width: 720px) {
+    /* Keskenyebb asztali ablaknal a leirasok eltunnek, mielott elfogyna
+       mellettuk a hely. Ettol a tipografia nem tud szetcsuszni. */
+    @media (max-width: 1080px) {
       :root {
-        --app-size: clamp(38px, 12vw, 72px);
-        --preview-w: min(62vw, 300px);
+        --app-size: clamp(42px, 8.6vw, 92px);
+        --row-height: 0.73em;
       }
 
+      .app-description {
+        display: none !important;
+      }
+    }
+
+    @media (max-width: 720px) {
       :root {
-        --footer-height: 130px;
-        --top-space: 28px;
-        --footer-space: 28px;
+        --app-size: clamp(36px, 11.5vw, 66px);
+        --row-height: 0.74em;
+        --preview-w: min(62vw, 300px);
+        --footer-height: 112px;
+        --top-space: 24px;
+        --footer-space: 24px;
+        --page-pad: clamp(10px, 3.2vw, 16px);
+        --header-size: clamp(11px, 3.2vw, 14px);
+      }
+
+      main {
+        padding-bottom: calc(var(--footer-height) + var(--footer-space) + 12px);
       }
 
       .site-footer {
         align-items: flex-end;
+        gap: 14px;
       }
 
-      .app-description {
-        width: min(36vw, 230px);
-        font-size: clamp(8px, 1.3vw, 10px);
+      .footer-right {
+        gap: 6px;
+      }
+
+      .app-title {
+        max-width: calc(100vw - (2 * var(--page-pad)));
+        overflow: hidden;
       }
     }
 
-    @media (pointer: coarse) {
-      .preview { display: none !important; }
+    /* Telefonon/touch eszkozon a hover-leiras es a kurzor-preview egyaltalan
+       nem jelenik meg. */
+    @media (hover: none), (pointer: coarse) {
+      .app-description,
+      .preview {
+        display: none !important;
+      }
+    }
+
+    .motion-permission {
+      position: fixed;
+      right: var(--page-pad);
+      top: var(--page-pad);
+      z-index: 12000;
+      display: none;
+      padding: 7px 9px;
+      border: 1px solid var(--fg);
+      border-radius: 0;
+      background: rgba(255, 255, 255, 0.88);
+      color: var(--fg);
+      font: inherit;
+      font-size: 11px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+
+    .motion-permission.is-visible {
+      display: block;
+    }
+
+    @media (min-width: 1081px) and (hover: hover) and (pointer: fine) {
+      .motion-permission { display: none !important; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -393,6 +449,10 @@
     <img id="previewImage" alt="" />
     <div class="preview-fallback" id="previewFallback">Preview</div>
   </div>
+
+  <!-- iPhone/iPad alatt a Safari felhasznaloi engedelyt ker a mozgaserzekelohoz.
+       Androidon, ahol ez nem szukseges, ez a gomb nem jelenik meg. -->
+  <button class="motion-permission" id="motionPermission" type="button">Mozgás engedélyezése</button>
 
   <script>
     /*
@@ -871,6 +931,7 @@
   }
 
   function pushFromPointer(e) {
+    if (e.pointerType === 'touch') return;
     const now = performance.now();
     const x = e.clientX;
     const y = e.clientY;
@@ -916,7 +977,130 @@
   window.addEventListener('blur', () => { pointer.active = false; });
   window.addEventListener('resize', resizeCanvas, { passive: true });
 
+  /* Mobil mozgaserzekelo -------------------------------------------------
+     A devicemotion gyorsulasat impulzussa alakitjuk. Enyhe mozgas csak
+     finoman tereli a rudakat, eros razasnal viszont szetszaladnak es forognak. */
+  const motionButton = document.getElementById('motionPermission');
+  let motionListening = false;
+  let lastMotionSample = null;
+  let lastShakeTime = 0;
+
+  function screenAdjusted(x, y) {
+    const angle = (screen.orientation && Number.isFinite(screen.orientation.angle))
+      ? screen.orientation.angle
+      : (Number(window.orientation) || 0);
+
+    if (angle === 90) return { x: -y, y: x };
+    if (angle === -90 || angle === 270) return { x: y, y: -x };
+    if (Math.abs(angle) === 180) return { x: -x, y: -y };
+    return { x, y };
+  }
+
+  function handleDeviceMotion(e) {
+    const now = performance.now();
+    const source = e.acceleration || e.accelerationIncludingGravity;
+    const gravitySource = e.accelerationIncludingGravity;
+    if (!source) return;
+
+    const rawX = Number(source.x) || 0;
+    const rawY = Number(source.y) || 0;
+    const rawZ = Number(source.z) || 0;
+    const adjusted = screenAdjusted(rawX, rawY);
+
+    /* Enyhe telefonmozgatas/forgatas: kis kozos lokes. */
+    const gentleX = clamp(adjusted.x * 0.13, -1.8, 1.8);
+    const gentleY = clamp(-adjusted.y * 0.13, -1.8, 1.8);
+    for (const b of pieces) {
+      b.vx += gentleX;
+      b.vy += gentleY;
+    }
+
+    const sample = {
+      x: Number(gravitySource?.x ?? rawX) || 0,
+      y: Number(gravitySource?.y ?? rawY) || 0,
+      z: Number(gravitySource?.z ?? rawZ) || 0,
+      t: now
+    };
+
+    if (!lastMotionSample) {
+      lastMotionSample = sample;
+      return;
+    }
+
+    const dx = sample.x - lastMotionSample.x;
+    const dy = sample.y - lastMotionSample.y;
+    const dz = sample.z - lastMotionSample.z;
+    const jerk = Math.hypot(dx, dy, dz);
+    const planar = screenAdjusted(dx, dy);
+    lastMotionSample = sample;
+
+    /* Kis rezgeseket figyelmen kivul hagyunk. */
+    if (jerk < 1.35) return;
+
+    const strength = clamp((jerk - 1.35) * 8.0, 0, 145);
+    const strongShake = jerk > 4.2 && now - lastShakeTime > 70;
+    if (strongShake) lastShakeTime = now;
+
+    for (const b of pieces) {
+      const variation = 0.72 + Math.random() * 0.56;
+      b.vx += clamp(planar.x * 4.8, -82, 82) * variation;
+      b.vy += clamp(-planar.y * 4.8, -82, 82) * variation;
+
+      if (strongShake) {
+        const burst = strength * (0.55 + Math.random() * 0.75);
+        const a = Math.random() * Math.PI * 2;
+        b.vx += Math.cos(a) * burst;
+        b.vy += Math.sin(a) * burst;
+        b.omega += (Math.random() - 0.5) * clamp(strength * 0.010, 0.10, 0.72);
+      } else {
+        b.omega += (Math.random() - 0.5) * clamp(strength * 0.0025, 0.02, 0.18);
+      }
+    }
+  }
+
+  function startMotionListening() {
+    if (motionListening || typeof DeviceMotionEvent === 'undefined') return;
+    motionListening = true;
+    lastMotionSample = null;
+    window.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
+  }
+
+  async function enableMotionFromButton() {
+    try {
+      if (typeof DeviceMotionEvent !== 'undefined' &&
+          typeof DeviceMotionEvent.requestPermission === 'function') {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== 'granted') {
+          motionButton.textContent = 'Mozgás nincs engedélyezve';
+          setTimeout(() => motionButton.classList.remove('is-visible'), 1800);
+          return;
+        }
+      }
+      startMotionListening();
+      motionButton.classList.remove('is-visible');
+    } catch (error) {
+      motionButton.textContent = 'Mozgás nem elérhető';
+      setTimeout(() => motionButton.classList.remove('is-visible'), 1800);
+    }
+  }
+
+  function setupMotion() {
+    if (typeof DeviceMotionEvent === 'undefined') return;
+
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      /* iOS: csak kattintas/erintes utan kerheto az engedely. */
+      if (motionButton) {
+        motionButton.classList.add('is-visible');
+        motionButton.addEventListener('click', enableMotionFromButton, { once: true });
+      }
+    } else {
+      /* Android es mas bongeszok: ahol nem kell kulon engedely, indul magatol. */
+      startMotionListening();
+    }
+  }
+
   resizeCanvas();
+  setupMotion();
   requestAnimationFrame(frame);
 })();
 </script>
