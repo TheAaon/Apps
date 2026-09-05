@@ -272,53 +272,59 @@
       pointer-events: none;
     }
 
+    /* A kis leiras a cim jobb oldalan, a sor also vagasaban rejtve ul.
+       Alaphelyzetben teljesen a vagas alatt van, hoverkor a cimmel egyutt
+       felcsuszik es kijon a takarasbol. */
+    .app-description {
+      position: absolute;
+      left: var(--description-left, 55%);
+      bottom: -2.8em;
+      z-index: 3;
+      width: min(31vw, 390px);
+      max-width: calc(100% - var(--description-left, 55%) - var(--page-pad));
+      font-size: clamp(12px, 0.085em, 13px);
+      font-weight: 400;
+      line-height: 1.22;
+      letter-spacing: -0.02em;
+      white-space: normal;
+      color: var(--fg);
+      transform: translateY(0);
+      transition: transform var(--speed) ease-out;
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    .app-row:hover .app-description,
+    .app-row:focus-visible .app-description {
+      transform: translateY(-3.9em);
+    }
+
     .preview {
       position: fixed;
       top: 0;
       left: 0;
       z-index: 10000;
-      width: min(calc(var(--preview-w) + clamp(150px, 15vw, 230px)), calc(100vw - 20px));
-      height: clamp(150px, 24vw, 244px);
+      width: var(--preview-w);
+      aspect-ratio: 16 / 10;
       display: none;
-      align-items: stretch;
       pointer-events: none;
-      background: transparent;
-      overflow: visible;
-      border: 0px solid var(--line);
+      background: #f3f3f3;
+      overflow: hidden;
+      border: 0;
     }
 
-    .preview.is-visible { display: flex; }
+    .preview.is-visible { display: block; }
 
     .preview img {
-      width: var(--preview-w);
-      max-width: 65%;
+      width: 100%;
       height: 100%;
       display: block;
       object-fit: cover;
     }
 
-
-    .preview-description {
-      flex: 1;
-      min-width: 0;
-      padding: 0 0 0 14px;
-      display: flex;
-      align-items: flex-start;
-      font-size: clamp(11px, 0.9vw, 14px);
-      font-weight: 400;
-      line-height: 1.25;
-      letter-spacing: -0.02em;
-      color: var(--fg);
-      background: transparent;
-    }
-
     .preview-fallback {
       position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: var(--preview-w);
-      max-width: 65%;
+      inset: 0;
       display: none;
       align-items: center;
       justify-content: center;
@@ -349,18 +355,9 @@
         align-items: flex-end;
       }
 
-      .preview {
-        width: min(88vw, 430px);
-        height: min(42vw, 210px);
-      }
-
-      .preview img {
-        width: 62%;
-      }
-
-      .preview-description {
-        padding-left: 10px;
-        font-size: 10px;
+      .app-description {
+        width: min(36vw, 230px);
+        font-size: clamp(8px, 1.3vw, 10px);
       }
     }
 
@@ -370,6 +367,7 @@
 
     @media (prefers-reduced-motion: reduce) {
       .app-title,
+      .app-description,
       .app-sheet { transition: none; }
     }
   </style>
@@ -393,7 +391,6 @@
 
   <div class="preview" id="preview" aria-hidden="true">
     <img id="previewImage" alt="" />
-    <div class="preview-description" id="previewDescription"></div>
     <div class="preview-fallback" id="previewFallback">Preview</div>
   </div>
 
@@ -422,7 +419,7 @@
         name: "FLOORPLANER",
         url: "w",
         preview: "image/soon2.png",
-        description: "SOON."
+        description: "SOON"
       }
     ];
 
@@ -430,7 +427,6 @@
     const preview = document.getElementById("preview");
     const previewImage = document.getElementById("previewImage");
     const previewFallback = document.getElementById("previewFallback");
-    const previewDescription = document.getElementById("previewDescription");
 
     apps.forEach((app, index) => {
       const link = document.createElement("a");
@@ -449,11 +445,28 @@
         <span class="app-sheet" aria-hidden="true"></span>
         <span class="app-title-clip">
           <span class="app-title">${app.name}</span>
+          <span class="app-description">${app.description || ""}</span>
         </span>
       `;
 
       list.appendChild(link);
     });
+
+    function positionDescriptions() {
+      const gap = Math.max(24, Math.min(48, window.innerWidth * 0.025));
+      document.querySelectorAll(".app-row").forEach((row) => {
+        const title = row.querySelector(".app-title");
+        const description = row.querySelector(".app-description");
+        if (!title || !description) return;
+        const rowRect = row.getBoundingClientRect();
+        const titleRect = title.getBoundingClientRect();
+        const desiredLeft = titleRect.right - rowRect.left + gap;
+        description.style.setProperty("--description-left", `${desiredLeft}px`);
+      });
+    }
+
+    requestAnimationFrame(positionDescriptions);
+    window.addEventListener("resize", () => requestAnimationFrame(positionDescriptions));
 
     const endSheet = document.createElement("div");
     endSheet.className = "end-sheet";
@@ -468,7 +481,6 @@
     function showPreview(row) {
       currentRow = row;
       previewFallback.textContent = row.dataset.name;
-      previewDescription.textContent = row.dataset.description || "";
       preview.classList.remove("no-image");
       previewImage.src = row.dataset.preview;
       preview.classList.add("is-visible");
