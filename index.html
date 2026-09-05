@@ -277,27 +277,48 @@
       top: 0;
       left: 0;
       z-index: 10000;
-      width: var(--preview-w);
-      aspect-ratio: 16 / 10;
+      width: min(calc(var(--preview-w) + clamp(150px, 15vw, 230px)), calc(100vw - 20px));
+      height: clamp(150px, 24vw, 244px);
       display: none;
+      align-items: stretch;
       pointer-events: none;
-      background: #f3f3f3;
-      overflow: hidden;
+      background: transparent;
+      overflow: visible;
       border: 0px solid var(--line);
     }
 
-    .preview.is-visible { display: block; }
+    .preview.is-visible { display: flex; }
 
     .preview img {
-      width: 100%;
+      width: var(--preview-w);
+      max-width: 65%;
       height: 100%;
       display: block;
       object-fit: cover;
     }
 
+
+    .preview-description {
+      flex: 1;
+      min-width: 0;
+      padding: 0 0 0 14px;
+      display: flex;
+      align-items: flex-start;
+      font-size: clamp(11px, 0.9vw, 14px);
+      font-weight: 400;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: var(--fg);
+      background: transparent;
+    }
+
     .preview-fallback {
       position: absolute;
-      inset: 0;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: var(--preview-w);
+      max-width: 65%;
       display: none;
       align-items: center;
       justify-content: center;
@@ -326,6 +347,20 @@
 
       .site-footer {
         align-items: flex-end;
+      }
+
+      .preview {
+        width: min(88vw, 430px);
+        height: min(42vw, 210px);
+      }
+
+      .preview img {
+        width: 62%;
+      }
+
+      .preview-description {
+        padding-left: 10px;
+        font-size: 10px;
       }
     }
 
@@ -358,6 +393,7 @@
 
   <div class="preview" id="preview" aria-hidden="true">
     <img id="previewImage" alt="" />
+    <div class="preview-description" id="previewDescription"></div>
     <div class="preview-fallback" id="previewFallback">Preview</div>
   </div>
 
@@ -372,17 +408,21 @@
       {
         name: "HUN TYPE",
         url: "https://theaaon.github.io/HUNType/",
-        preview: "image/21.png"
+        preview: "image/21.png",
+        description: "Egyszerű eszköz, amivel gyorsan kiegészítheted a betűtípusokat a hiányzó magyar ékezetes karakterekkel."
       },
       {
         name: "PRE'ON",
         url: "https://theaaon.github.io/Preon_Lite/",
-        preview: "image/31.png"
+        preview: "image/31.png",
+        description: "Böngészőben használható prezentációkészítő. A fájlok a saját gépeden maradnak, az elkészült prezentációt pedig HTML-ként is elmentheted."
+        
       },
       {
         name: "FLOORPLANER",
         url: "w",
-        preview: "image/soon2.png"
+        preview: "image/soon2.png",
+        description: "SOON."
       }
     ];
 
@@ -390,6 +430,7 @@
     const preview = document.getElementById("preview");
     const previewImage = document.getElementById("previewImage");
     const previewFallback = document.getElementById("previewFallback");
+    const previewDescription = document.getElementById("previewDescription");
 
     apps.forEach((app, index) => {
       const link = document.createElement("a");
@@ -399,6 +440,7 @@
       link.rel = "noopener noreferrer";
       link.dataset.preview = app.preview;
       link.dataset.name = app.name;
+      link.dataset.description = app.description || "";
 
       /* Minden kovetkezo lap az elozo folott van. */
       link.style.zIndex = String(index + 1);
@@ -426,6 +468,7 @@
     function showPreview(row) {
       currentRow = row;
       previewFallback.textContent = row.dataset.name;
+      previewDescription.textContent = row.dataset.description || "";
       preview.classList.remove("no-image");
       previewImage.src = row.dataset.preview;
       preview.classList.add("is-visible");
