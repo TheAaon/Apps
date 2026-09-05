@@ -855,7 +855,17 @@
       b.vy *= drag;
       b.omega *= Math.exp(-0.065 * dt);
 
-      const maxV = Math.max(90, Math.min(width, height) * 0.19);
+      const shakeActive = performance.now() < shakeChaosUntil;
+      if (shakeActive) {
+        /* Rázás után rövid ideig tovább kavarjuk a rudakat, hogy tényleg
+           szétszálljanak és ne fékeződjenek le egyetlen képkocka alatt. */
+        b.vx += (Math.random() - 0.5) * 16;
+        b.vy += (Math.random() - 0.5) * 16;
+        b.omega += (Math.random() - 0.5) * 0.055;
+      }
+      const maxV = shakeActive
+        ? Math.max(430, Math.min(width, height) * 1.15)
+        : Math.max(90, Math.min(width, height) * 0.19);
       const sp = Math.hypot(b.vx, b.vy);
       if (sp > maxV) {
         b.vx *= maxV / sp;
@@ -984,6 +994,7 @@
   let motionListening = false;
   let lastMotionSample = null;
   let lastShakeTime = 0;
+  let shakeChaosUntil = 0;
 
   function screenAdjusted(x, y) {
     const angle = (screen.orientation && Number.isFinite(screen.orientation.angle))
@@ -1035,25 +1046,30 @@
     lastMotionSample = sample;
 
     /* Kis rezgeseket figyelmen kivul hagyunk. */
-    if (jerk < 1.35) return;
+    if (jerk < 1.15) return;
 
-    const strength = clamp((jerk - 1.35) * 8.0, 0, 145);
-    const strongShake = jerk > 4.2 && now - lastShakeTime > 70;
-    if (strongShake) lastShakeTime = now;
+    /* A rázást szándékosan erősen túlhangsúlyozzuk. Telefonon ettől lesz
+       az az érzés, mintha a piros rudakat tényleg felráznád a képernyőn. */
+    const strength = clamp((jerk - 1.15) * 24.0, 0, 520);
+    const strongShake = jerk > 3.0 && now - lastShakeTime > 45;
+    if (strongShake) {
+      lastShakeTime = now;
+      shakeChaosUntil = now + 720;
+    }
 
     for (const b of pieces) {
       const variation = 0.72 + Math.random() * 0.56;
-      b.vx += clamp(planar.x * 4.8, -82, 82) * variation;
-      b.vy += clamp(-planar.y * 4.8, -82, 82) * variation;
+      b.vx += clamp(planar.x * 11.0, -240, 240) * variation;
+      b.vy += clamp(-planar.y * 11.0, -240, 240) * variation;
 
       if (strongShake) {
-        const burst = strength * (0.55 + Math.random() * 0.75);
+        const burst = Math.max(180, strength) * (0.85 + Math.random() * 1.15);
         const a = Math.random() * Math.PI * 2;
         b.vx += Math.cos(a) * burst;
         b.vy += Math.sin(a) * burst;
-        b.omega += (Math.random() - 0.5) * clamp(strength * 0.010, 0.10, 0.72);
+        b.omega += (Math.random() - 0.5) * clamp(strength * 0.020, 0.55, 2.4);
       } else {
-        b.omega += (Math.random() - 0.5) * clamp(strength * 0.0025, 0.02, 0.18);
+        b.omega += (Math.random() - 0.5) * clamp(strength * 0.0055, 0.04, 0.42);
       }
     }
   }
